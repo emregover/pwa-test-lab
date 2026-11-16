@@ -5,7 +5,7 @@ import { el, mediaError, mediaSupported, releaseMedia, stopStream, takeMedia } f
 
 export const validRoom = value => /^lab-[0-9a-f]{32}$/.test(value || '');
 
-export function setupCall() {
+export function setupCall(recording) {
   let inviteRoom = new URL(location.href).searchParams.get('room');
   const start = el('start-call');
   const newRoom = el('new-room');
@@ -42,6 +42,7 @@ export function setupCall() {
   function finish(message = '') {
     callActive = false;
     generation++;
+    recording.endCall();
     clearTimeout(timeout);
     const old = peer;
     peer = undefined;
@@ -86,12 +87,23 @@ export function setupCall() {
 
   remote.addEventListener('playing', clearPlaybackPrompt);
 
-  function setCall(call, current) {
+  function setCall(call, current, roomToJoin = null) {
+    let recordingLinkStarted = false;
     session = call;
     call.on('stream', other => {
       if (current !== generation || remote.srcObject === other) return;
       clearPlaybackPrompt();
       remote.srcObject = other;
+      recording.setStreams(stream, other);
+      if (roomToJoin && !recordingLinkStarted) {
+        recordingLinkStarted = true;
+        const channel = peer.connect(roomToJoin, {
+          reliable: true,
+          label: 'meeting-recording',
+          metadata: call.metadata,
+        });
+        if (channel) recording.attach(channel);
+      }
       el('stage-message').hidden = true;
       void playRemote(current, other);
     });
@@ -149,6 +161,7 @@ export function setupCall() {
   async function beginCall() {
     takeMedia(finish);
     callActive = true;
+    recording.startCall();
     const current = ++generation;
     start.disabled = true;
     newRoom.hidden = true;
@@ -184,6 +197,16 @@ export function setupCall() {
         if (current !== generation) return;
         finish(error.type === 'peer-unavailable' ? 'Oda bulunamadı. Odayı açan kişi sayfayı açık tutmalı.' : 'Oda servisiyle bağlantı kurulamadı.');
       });
+      peer.on('connection', channel => {
+        if (current !== generation || roomToJoin || !session
+          || channel.label !== 'meeting-recording' || channel.peer !== session.peer
+          || typeof session.metadata?.recordingId !== 'string'
+          || channel.metadata?.recordingId !== session.metadata.recordingId) {
+          channel.close();
+          return;
+        }
+        recording.attach(channel);
+      });
       peer.on('call', call => {
         if (current !== generation || roomToJoin || session) { call.close(); return; }
         status.textContent = 'Karşı tarafın bağlantısı bekleniyor…';
@@ -197,8 +220,8 @@ export function setupCall() {
         showDiagnostics();
         if (roomToJoin) {
           status.textContent = 'Odaya bağlanılıyor…';
-          const call = peer.call(roomToJoin, stream);
-          if (call) setCall(call, current);
+          const call = peer.call(roomToJoin, stream, { metadata: { recordingId: crypto.randomUUID() } });
+          if (call) setCall(call, current, roomToJoin);
           else finish('Görüşme başlatılamadı.');
           return;
         }
@@ -292,5 +315,5 @@ export function setupCall() {
     catch (error) { if (error.name !== 'AbortError') status.textContent = 'Bağlantıyı kopyalayarak paylaşabilirsin.'; }
   });
 
-  return () => callActive ? { stream } : null;
+  return () => callActive;
 }

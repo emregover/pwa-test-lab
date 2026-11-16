@@ -1,11 +1,12 @@
 import './style.css';
 import { setupCall } from './call.js';
-import { setupMedia } from './media.js';
+import { setupScanner } from './media.js';
+import { setupRecording } from './recording.js';
 
 import { el, stopActiveMedia } from './devices.js';
 
-const getCallMedia = setupCall();
-setupMedia(getCallMedia);
+const getCallMedia = setupCall(setupRecording());
+setupScanner(getCallMedia);
 window.addEventListener('pagehide', stopActiveMedia);
 
 let installPrompt;
