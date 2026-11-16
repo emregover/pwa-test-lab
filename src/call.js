@@ -4,10 +4,11 @@ import QRCode from 'qrcode';
 import { el, mediaError, mediaSupported, releaseMedia, stopStream, takeMedia } from './devices.js';
 
 export const validRoom = value => /^lab-[0-9a-f]{32}$/.test(value || '');
-const inviteRoom = new URL(location.href).searchParams.get('room');
 
 export function setupCall() {
+  let inviteRoom = new URL(location.href).searchParams.get('room');
   const start = el('start-call');
+  const newRoom = el('new-room');
   const status = el('call-status');
   const local = el('local');
   const remote = el('remote');
@@ -55,8 +56,11 @@ export function setupCall() {
     mic.textContent = 'Mikrofonu kapat';
     mic.setAttribute('aria-pressed', 'false');
     status.textContent = message;
+    const canRejoin = validRoom(inviteRoom);
+    start.textContent = canRejoin ? 'Tekrar katıl' : 'Yeni oda oluştur';
     start.hidden = false;
     start.disabled = false;
+    newRoom.hidden = !canRejoin;
   }
 
   function clearPlaybackPrompt() {
@@ -140,15 +144,16 @@ export function setupCall() {
     }, 28_000);
   }
 
-  start.addEventListener('click', async () => {
+  async function beginCall() {
     takeMedia(finish);
     const current = ++generation;
     start.disabled = true;
+    newRoom.hidden = true;
     diagnostics.hidden = true;
     end.hidden = false;
     status.textContent = 'Kamera ve mikrofon izni bekleniyor…';
-    const joining = validRoom(inviteRoom);
-    const id = joining ? undefined : 'lab-' + crypto.randomUUID().replace(/-/g, '');
+    const roomToJoin = validRoom(inviteRoom) ? inviteRoom : null;
+    const id = roomToJoin ? undefined : 'lab-' + crypto.randomUUID().replace(/-/g, '');
     try {
       const next = await navigator.mediaDevices.getUserMedia({
         audio: true, video: { facingMode: 'user' },
@@ -157,7 +162,7 @@ export function setupCall() {
       stream = next;
       facing = 'user';
       local.srcObject = stream;
-      local.hidden = mic.hidden = camera.hidden = start.disabled = false;
+      local.hidden = mic.hidden = camera.hidden = false;
       start.hidden = true;
       status.textContent = 'Sinyalleşme bağlantısı kuruluyor…';
       const managedServers = await getManagedIceServers();
@@ -177,7 +182,7 @@ export function setupCall() {
         finish(error.type === 'peer-unavailable' ? 'Oda bulunamadı. Odayı açan kişi sayfayı açık tutmalı.' : 'Oda servisiyle bağlantı kurulamadı.');
       });
       peer.on('call', call => {
-        if (current !== generation || joining || session) { call.close(); return; }
+        if (current !== generation || roomToJoin || session) { call.close(); return; }
         status.textContent = 'Karşı tarafın bağlantısı bekleniyor…';
         call.answer(stream);
         setCall(call, current);
@@ -187,9 +192,9 @@ export function setupCall() {
         clearTimeout(timeout);
         ice.phase = 'room';
         showDiagnostics();
-        if (joining) {
+        if (roomToJoin) {
           status.textContent = 'Odaya bağlanılıyor…';
-          const call = peer.call(inviteRoom, stream);
+          const call = peer.call(roomToJoin, stream);
           if (call) setCall(call, current);
           else finish('Görüşme başlatılamadı.');
           return;
@@ -197,18 +202,32 @@ export function setupCall() {
         const url = new URL('/', location.origin);
         url.searchParams.set('room', id);
         el('room-url').value = url.href;
+        const qrImage = el('invite-qr');
+        qrImage.hidden = true;
+        qrImage.removeAttribute('src');
         el('invite').hidden = false;
         status.textContent = 'Davet bağlantısını veya QR kodunu paylaş.';
         try {
           const qr = await QRCode.toDataURL(url.href, { width: 260, margin: 2 });
-          if (current === generation) el('invite-qr').src = qr;
-        } catch {
-          if (current === generation) el('invite-qr').hidden = true;
-        }
+          if (current === generation) {
+            qrImage.src = qr;
+            qrImage.hidden = false;
+          }
+        } catch { /* The invitation link is still available. */ }
       });
     } catch (error) {
       if (current === generation) finish(mediaError(error));
     }
+  }
+
+  start.addEventListener('click', () => void beginCall());
+  newRoom.addEventListener('click', () => {
+    const url = new URL(location.href);
+    url.searchParams.delete('room');
+    history.replaceState(history.state, '', url);
+    inviteRoom = null;
+    start.textContent = 'Yeni oda oluştur';
+    void beginCall();
   });
 
   end.addEventListener('click', () => finish('Görüşme sona erdi.'));
