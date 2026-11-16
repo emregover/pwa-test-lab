@@ -1,4 +1,5 @@
-import { Peer } from 'peerjs';
+import { Peer, util } from 'peerjs';
+import { describeIce, getManagedIceServers } from './ice.js';
 import QRCode from 'qrcode';
 import { el, mediaError, mediaSupported, releaseMedia, stopStream, takeMedia } from './devices.js';
 
@@ -15,6 +16,8 @@ export function setupCall() {
   const camera = el('camera');
   const end = el('end-call');
   const network = el('call-network');
+  const diagnostics = el('call-diagnostics');
+  let ice;
   let peer, session, stream, timeout;
   let generation = 0;
   let facing = 'user';
@@ -25,6 +28,12 @@ export function setupCall() {
     status.textContent = 'Bu tarayıcıda WebRTC veya medya erişimi yok.';
   } else if (inviteRoom && !validRoom(inviteRoom)) {
     status.textContent = 'Davet bağlantısı geçersiz. Yeni oda oluşturabilirsin.';
+  }
+
+  function showDiagnostics() {
+    if (!ice) return;
+    diagnostics.hidden = false;
+    diagnostics.textContent = describeIce(ice);
   }
 
   function finish(message = '') {
@@ -59,8 +68,28 @@ export function setupCall() {
     call.on('error', () => { if (current === generation) finish('Görüşme bağlantısında hata oluştu.'); });
     const connection = call.peerConnection;
     if (!connection) return;
+    ice.phase = 'media';
+    function showMediaState() {
+      if (current !== generation) return;
+      ice.connectionState = connection.connectionState;
+      ice.iceState = connection.iceConnectionState;
+      showDiagnostics();
+    }
+    connection.addEventListener('iceconnectionstatechange', showMediaState);
+    connection.addEventListener('icecandidate', event => {
+      if (current !== generation || event.candidate?.type !== 'relay') return;
+      ice.relay = true;
+      showDiagnostics();
+    });
+    connection.addEventListener('icecandidateerror', event => {
+      if (current !== generation || !event.errorCode) return;
+      ice.errors.add(event.errorCode);
+      showDiagnostics();
+    });
+    showMediaState();
     connection.addEventListener('connectionstatechange', async () => {
       if (current !== generation) return;
+      showMediaState();
       if (connection.connectionState === 'connected') {
         clearTimeout(timeout);
         status.textContent = 'Bağlandı.';
@@ -90,6 +119,7 @@ export function setupCall() {
     takeMedia(finish);
     const current = ++generation;
     start.disabled = true;
+    diagnostics.hidden = true;
     end.hidden = false;
     status.textContent = 'Kamera ve mikrofon izni bekleniyor…';
     const joining = validRoom(inviteRoom);
@@ -105,7 +135,15 @@ export function setupCall() {
       local.hidden = mic.hidden = camera.hidden = start.disabled = false;
       start.hidden = true;
       status.textContent = 'Sinyalleşme bağlantısı kuruluyor…';
-      peer = id ? new Peer(id) : new Peer();
+      const managedServers = await getManagedIceServers();
+      if (current !== generation) return;
+      ice = { phase: 'signaling', errors: new Set(), managed: managedServers.length > 0 };
+      showDiagnostics();
+      const config = {
+        ...util.defaultConfig,
+        iceServers: [...util.defaultConfig.iceServers, ...managedServers],
+      };
+      peer = id ? new Peer(id, { config }) : new Peer({ config });
       timeout = setTimeout(() => {
         if (current === generation) finish('Oda servisine bağlanılamadı.');
       }, 18_000);
@@ -122,6 +160,8 @@ export function setupCall() {
       peer.on('open', async () => {
         if (current !== generation) return;
         clearTimeout(timeout);
+        ice.phase = 'room';
+        showDiagnostics();
         if (joining) {
           status.textContent = 'Odaya bağlanılıyor…';
           const call = peer.call(inviteRoom, stream);
