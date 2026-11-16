@@ -20,6 +20,7 @@ export function setupCall() {
   const diagnostics = el('call-diagnostics');
   const playbackStatus = el('playback-status');
   let ice;
+  let callActive = false;
   let peer, session, stream, timeout;
   let generation = 0;
   let facing = 'user';
@@ -39,6 +40,7 @@ export function setupCall() {
   }
 
   function finish(message = '') {
+    callActive = false;
     generation++;
     clearTimeout(timeout);
     const old = peer;
@@ -146,6 +148,7 @@ export function setupCall() {
 
   async function beginCall() {
     takeMedia(finish);
+    callActive = true;
     const current = ++generation;
     start.disabled = true;
     newRoom.hidden = true;
@@ -288,4 +291,6 @@ export function setupCall() {
     try { await navigator.share({ title: 'Bire bir görüşme', url: el('room-url').value }); }
     catch (error) { if (error.name !== 'AbortError') status.textContent = 'Bağlantıyı kopyalayarak paylaşabilirsin.'; }
   });
+
+  return () => callActive ? { stream } : null;
 }

@@ -4,8 +4,8 @@ import { setupMedia } from './media.js';
 
 import { el, stopActiveMedia } from './devices.js';
 
-setupCall();
-setupMedia();
+const getCallMedia = setupCall();
+setupMedia(getCallMedia);
 window.addEventListener('pagehide', stopActiveMedia);
 
 let installPrompt;

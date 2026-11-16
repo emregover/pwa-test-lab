@@ -1,6 +1,6 @@
 import { el, mediaError, mediaSupported, releaseMedia, stopStream, takeMedia } from './devices.js';
 
-export function setupMedia() {
+export function setupMedia(getCallMedia) {
   const preview = el('media-preview');
   const status = el('media-status');
   const output = el('media-output');
@@ -10,6 +10,7 @@ export function setupMedia() {
   const capture = el('capture');
   const stop = el('media-stop');
   let stream, recorder, assetUrl;
+  let ownsStream = false;
   let generation = 0;
   let supported = mediaSupported();
   const canRecord = supported && typeof MediaRecorder === 'function';
@@ -21,8 +22,9 @@ export function setupMedia() {
     generation++;
     if (recorder?.state === 'recording') recorder.stop();
     recorder = undefined;
-    stopStream(stream);
+    if (ownsStream) stopStream(stream);
     stream = undefined;
+    ownsStream = false;
     preview.srcObject = null;
     preview.hidden = capture.hidden = stop.hidden = true;
     photo.disabled = !supported;
@@ -51,19 +53,30 @@ export function setupMedia() {
   }
 
   async function begin(mode) {
+    const call = getCallMedia();
+    if (call && mode !== 'voice') {
+      status.textContent = 'Kamera görüşmede kullanılıyor. Bu testi görüşme sonrasında açabilirsin.';
+      return;
+    }
+    const callMic = call?.stream?.getAudioTracks().find(track => track.readyState === 'live');
+    if (call && !callMic) {
+      status.textContent = 'Görüşme mikrofonu hazır olunca ses kaydını başlatabilirsin.';
+      return;
+    }
     const currentOutput = ++outputVersion;
     finish();
-    takeMedia(finish);
+    if (!callMic) takeMedia(finish);
     const current = generation;
     photo.disabled = voice.disabled = movie.disabled = true;
     stop.hidden = false;
     status.textContent = 'Cihaz izni bekleniyor…';
     try {
-      const next = await navigator.mediaDevices.getUserMedia({
+      const next = callMic ? new MediaStream([callMic]) : await navigator.mediaDevices.getUserMedia({
         audio: mode !== 'photo', video: mode !== 'voice' && { facingMode: 'environment' },
       });
-      if (current !== generation) { stopStream(next); return; }
+      if (current !== generation) { if (!callMic) stopStream(next); return; }
       stream = next;
+      ownsStream = !callMic;
       el('media-support').textContent = 'İzin verildi';
       if (mode !== 'voice') { preview.srcObject = stream; preview.hidden = false; }
       if (mode === 'photo') {
@@ -79,14 +92,23 @@ export function setupMedia() {
         if (current === generation) { finish(); status.textContent = 'Kayıt sırasında hata oluştu.'; }
       };
       recorder.onstop = () => {
-        if (currentOutput !== outputVersion || !chunks.length) return;
+        if (recorder === currentRecorder) finish();
+        if (currentOutput !== outputVersion) return;
+        if (!chunks.length) {
+          if (status.textContent.startsWith('Kayıt yapılıyor') || status.textContent.startsWith('Mikrofon kaydediliyor')) {
+            status.textContent = 'Kayıt dosyası oluşmadı.';
+          }
+          return;
+        }
         const type = currentRecorder.mimeType || chunks[0].type;
         const extension = type.split(';')[0].split('/')[1] || 'webm';
         show(new Blob(chunks, { type }), (mode === 'voice' ? 'ses.' : 'video.') + extension);
         status.textContent = 'Kayıt hazır.';
       };
       recorder.start();
-      status.textContent = 'Kayıt yapılıyor…';
+      status.textContent = callMic
+        ? 'Mikrofon kaydediliyor. Karşı tarafın sesi kayda dahil edilmez. Mikrofon kapalıyken kayıt sessizdir.'
+        : 'Kayıt yapılıyor…';
     } catch (error) {
       if (current === generation) { finish(); status.textContent = mediaError(error); }
     }
@@ -121,15 +143,16 @@ export function setupMedia() {
   });
   window.addEventListener('pagehide', () => {
     outputVersion++;
+    finish();
     if (assetUrl) URL.revokeObjectURL(assetUrl);
     assetUrl = undefined;
     output.replaceChildren();
   });
 
-  setupScanner();
+  setupScanner(getCallMedia);
 }
 
-function setupScanner() {
+function setupScanner(getCallMedia) {
   const scan = el('scan');
   const stop = el('scan-stop');
   const video = el('scan-preview');
@@ -170,6 +193,10 @@ function setupScanner() {
   }
 
   scan.addEventListener('click', async () => {
+    if (getCallMedia()) {
+      status.textContent = 'Kamera görüşmede kullanılıyor. Tarama için bir görsel seçebilir veya görüşmenin bitmesini bekleyebilirsin.';
+      return;
+    }
     takeMedia(finish);
     const current = ++generation;
     scan.disabled = true;
