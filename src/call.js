@@ -17,6 +17,7 @@ export function setupCall() {
   const end = el('end-call');
   const network = el('call-network');
   const diagnostics = el('call-diagnostics');
+  const playbackStatus = el('playback-status');
   let ice;
   let peer, session, stream, timeout;
   let generation = 0;
@@ -49,6 +50,8 @@ export function setupCall() {
     local.srcObject = remote.srcObject = null;
     el('stage-message').hidden = false;
     local.hidden = mic.hidden = camera.hidden = end.hidden = resume.hidden = network.hidden = el('invite').hidden = true;
+    resume.disabled = false;
+    playbackStatus.textContent = '';
     mic.textContent = 'Mikrofonu kapat';
     mic.setAttribute('aria-pressed', 'false');
     status.textContent = message;
@@ -56,13 +59,35 @@ export function setupCall() {
     start.disabled = false;
   }
 
+  function clearPlaybackPrompt() {
+    resume.hidden = true;
+    playbackStatus.textContent = '';
+  }
+
+  async function playRemote(current, source, userInitiated = false) {
+    try {
+      await remote.play();
+      if (current === generation && remote.srcObject === source) clearPlaybackPrompt();
+    } catch (error) {
+      if (current !== generation || remote.srcObject !== source || !remote.paused) return;
+      if (error.name === 'AbortError') return;
+      resume.hidden = error.name !== 'NotAllowedError';
+      if (userInitiated || resume.hidden) {
+        playbackStatus.textContent = 'Tarayıcı karşı tarafın ses ve görüntüsünü oynatamadı.';
+      }
+    }
+  }
+
+  remote.addEventListener('playing', clearPlaybackPrompt);
+
   function setCall(call, current) {
     session = call;
     call.on('stream', other => {
-      if (current !== generation) return;
+      if (current !== generation || remote.srcObject === other) return;
+      clearPlaybackPrompt();
       remote.srcObject = other;
       el('stage-message').hidden = true;
-      remote.play().catch(() => { if (current === generation) resume.hidden = false; });
+      void playRemote(current, other);
     });
     call.on('close', () => { if (current === generation) finish('Görüşme sona erdi.'); });
     call.on('error', () => { if (current === generation) finish('Görüşme bağlantısında hata oluştu.'); });
@@ -188,8 +213,15 @@ export function setupCall() {
 
   end.addEventListener('click', () => finish('Görüşme sona erdi.'));
   resume.addEventListener('click', async () => {
-    try { await remote.play(); resume.hidden = true; }
-    catch { status.textContent = 'Tarayıcı ses veya görüntü oynatmayı engelledi.'; }
+    const source = remote.srcObject;
+    if (!source || !remote.paused) {
+      clearPlaybackPrompt();
+      return;
+    }
+    const current = generation;
+    resume.disabled = true;
+    await playRemote(current, source, true);
+    if (current === generation) resume.disabled = false;
   });
   mic.addEventListener('click', () => {
     const track = stream?.getAudioTracks()[0];
