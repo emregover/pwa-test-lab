@@ -64,6 +64,24 @@
         <a id="scan-room" class="secondary" hidden>Bu görüşme odasına git</a>
       </section>
     </div>
+    <section class="panel otp-panel" id="webotp" aria-labelledby="otp-title">
+      <h2 id="otp-title">WebOTP testi</h2>
+      <p class="status">Testi başlat, hazırlanan mesajı başka bir telefondan SMS olarak gönder.</p>
+      <button id="otp-start" class="primary" type="button">SMS testini başlat</button>
+      <div id="otp-test" hidden>
+        <label for="otp-sms" class="file-label">Gönderilecek SMS</label>
+        <textarea id="otp-sms" rows="3" readonly></textarea>
+        <button id="otp-copy" class="secondary" type="button">SMS metnini kopyala</button>
+        <form id="otp-form">
+          <label for="otp-code" class="file-label">Gelen kod</label>
+          <div class="controls">
+            <input id="otp-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
+            <button class="secondary" type="submit">Kodu kontrol et</button>
+          </div>
+        </form>
+      </div>
+      <p id="otp-status" class="status" role="status"></p>
+    </section>
     <footer>Toplantı kaydı, kaydı başlatan kişinin tarayıcısında hazırlanır.</footer>
   </main>
 </body>
