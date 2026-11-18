@@ -37,6 +37,10 @@
           <div class="controls"><button id="copy" class="secondary">Bağlantıyı kopyala</button><button id="share" class="secondary" hidden>Paylaş</button></div>
         </div>
       </div>
+      <div id="push-sender" class="output" hidden>
+        <button id="push-send" class="secondary" type="button">Oda davetini bildirimle gönder</button>
+        <p id="push-sender-status" class="status" role="status">Oda oluşturduktan sonra daveti gönderebilirsin.</p>
+      </div>
     </section>
     <div class="grid">
       <section class="panel">
@@ -81,6 +85,19 @@
         </form>
       </div>
       <p id="otp-status" class="status" role="status"></p>
+    </section>
+    <section class="panel otp-panel" id="push" aria-labelledby="push-title">
+      <h2 id="push-title">Görüşme bildirimleri</h2>
+      <button id="push-enable" class="primary" type="button">Bildirimleri aç</button>
+      <div id="push-link-result" class="output" hidden>
+        <label for="push-link">Davet alma bağlantısı</label>
+        <input id="push-link" readonly>
+        <div class="controls">
+          <button id="push-copy" class="secondary" type="button">Bağlantıyı kopyala</button>
+          <button id="push-share" class="secondary" type="button" hidden>Paylaş</button>
+        </div>
+      </div>
+      <p id="push-status" class="status" role="status"></p>
     </section>
     <footer>Toplantı kaydı, kaydı başlatan kişinin tarayıcısında hazırlanır.</footer>
   </main>

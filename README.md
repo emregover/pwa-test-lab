@@ -28,3 +28,22 @@ Durum satırı oda bağlantısını ve medya bağlantısını ayrı gösterir. M
 Vercel **Production** ortamında `CLOUDFLARE_TURN_KEY_ID` ve `CLOUDFLARE_TURN_API_TOKEN` tanımlandığında `/api/ice` Cloudflare Realtime TURN üzerinden bir saatlik geçici kimlik bilgileri üretir. Uzun ömürlü API tokenı sunucuda kalır. Yeniden dağıtım sonrası bağlantı adaylarına TURN/TLS TCP 443 eklenir. Değişkenler yoksa mevcut PeerJS yapılandırması kullanılır. İnternet üzerinden erişilebilen bu test uygulamasında geçici TURN erişimi de ziyaretçilere açık olur. Ücretli kullanım açılacaksa kimlik doğrulaması ve kullanım sınırlarıyla dağıt.
 
 Testi yeni odayla tekrarla. Bir cihaz Wi‑Fi’da, diğeri Turkcell mobil veride olsun. Odada iki yönlü ses ve görüntü geldiğini ve durum satırındaki bağlantı türünü kontrol et.
+
+## Görüşme bildirimleri
+
+Vercel proje ayarlarında **Production** ortamına hassas değişken olarak
+`PUSH_VAPID_KEYS` ekle ve yeniden dağıt. Değerini proje klasöründe `npm ci`
+sonrası aşağıdaki komutla üret.
+
+```sh
+node --input-type=module -e "import { generateVAPIDKeys } from 'web-push'; console.log(JSON.stringify(generateVAPIDKeys()))"
+```
+
+JSON değerinin tamamını Vercel'e gir. Özel anahtarı kaynak koda ekleme.
+
+1. Alıcı cihazda **Görüşme bildirimleri** bölümünü aç, **Bildirimleri aç** düğmesine dokun ve izin ver.
+2. Alıcı, 10 dakika geçerli **Davet alma bağlantısı**nı gönderen cihaza iletsin.
+3. Gönderen, bağlantıyı açıp **Oda oluştur** ve **Oda davetini bildirimle gönder** düğmelerini kullansın.
+4. Alıcı bildirime dokunup **Görüşmeye katıl** düğmesini kullansın.
+
+Davet alma bağlantısı, oluşturulduğu yayın adresinde geçerlidir.

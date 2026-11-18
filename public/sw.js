@@ -11,3 +11,30 @@ self.addEventListener('fetch', event => {
     })));
   }
 });
+
+self.addEventListener('push', event => {
+  let room;
+  try { room = event.data?.json()?.room; }
+  catch { return; }
+  if (typeof room !== 'string' || !/^lab-[0-9a-f]{32}$/.test(room)) return;
+  event.waitUntil(self.registration.showNotification('Görüşme daveti', {
+    body: 'Odaya katılmak için bildirime dokun.',
+    icon: '/icon-192.png',
+    tag: 'meeting-invite',
+    data: { room },
+  }));
+});
+
+self.addEventListener('notificationclick', event => {
+  const room = event.notification.data?.room;
+  if (typeof room !== 'string' || !/^lab-[0-9a-f]{32}$/.test(room)) return;
+  event.notification.close();
+  const url = new URL('/', self.location.origin);
+  url.searchParams.set('room', room);
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = windows.find(client => client.url === url.href);
+    if (existing) await existing.focus();
+    else await self.clients.openWindow(url.href);
+  })());
+});
